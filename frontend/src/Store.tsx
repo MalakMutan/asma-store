@@ -1,36 +1,83 @@
-import { useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, Cat, money, Prod, useFetch } from "./api";
 import { useCart } from "./cart";
 
-const ICON: Record<string, string> = { medicines: "💊", care: "🌿", beauty: "💄", "baby-care": "👶", "health-tools": "🩺" };
+const PATHS: Record<string, string> = {
+  medicines: '<rect x="3" y="9" width="18" height="6" rx="3" transform="rotate(-45 12 12)"/><path d="M9.5 9.5l5 5"/>',
+  care: '<path d="M5 19c0-9 5-14 14-14 0 9-5 14-14 14z"/><path d="M5 19L13 11"/>',
+  beauty: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  "baby-care": '<path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z"/>',
+  "health-tools": '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+};
+function Icon({ k }: { k: string }) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden dangerouslySetInnerHTML={{ __html: PATHS[k] ?? PATHS.care }} />;
+}
+const css = (v: Record<string, string | number>) => v as unknown as CSSProperties;
+
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !("IntersectionObserver" in window)) { setOn(true); return undefined; }
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setOn(true); io.disconnect(); } }, { threshold: 0.1 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return [ref, on] as const;
+}
 
 export function Layout() {
   const { count } = useCart();
   const nav = useNavigate();
   const [q, setQ] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+  const cats = useFetch<Cat[]>("/api/categories");
+  useEffect(() => {
+    const f = () => setScrolled(window.scrollY > 20);
+    f();
+    window.addEventListener("scroll", f, { passive: true });
+    return () => window.removeEventListener("scroll", f);
+  }, []);
   return (
     <>
-      <header>
+      <div className="ann" aria-live="off">
+        <span>التوصيل لجميع مناطق قطاع غزة</span>
+        <span>الدفع عند الاستلام</span>
+        <span>مراجعة صيدلانية للمنتجات العلاجية</span>
+      </div>
+      <header className={scrolled ? "s" : ""}>
         <div className="wrap bar">
           <Link to="/"><img src="/logo.jpg" alt="الصيدلانية أسماء" /></Link>
           <form onSubmit={(e) => { e.preventDefault(); nav(`/search?q=${encodeURIComponent(q)}`); }}>
             <input placeholder="ابحث عن منتج…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="بحث" />
           </form>
-          <Link to="/cart" className="btn">🛒 {count}</Link>
+          <Link to="/cart" className="btn">🛒 <span key={count} className={count ? "bump" : ""}>{count}</span></Link>
         </div>
+        <nav className="wrap navc" aria-label="الأقسام">
+          {cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`}>{c.name_ar}</Link>)}
+        </nav>
       </header>
       <main className="wrap"><Outlet /></main>
-      <footer>الصيدلانية أسماء · Ph. Asma Store — التوصيل لجميع مناطق قطاع غزة</footer>
+      <footer>
+        <div className="wrap fgrid">
+          <div><b className="fb">الصيدلانية أسماء</b><p>Ph. Asma Store — رعاية صيدلانية موثوقة وتوصيل لجميع مناطق قطاع غزة.</p></div>
+          <div><b>الأقسام</b>{cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`}>{c.name_ar}</Link>)}</div>
+          <div><b>معلومات الطلب</b><span>الدفع عند الاستلام</span><span>سعر التوصيل يُحدد حسب ظروف اليوم</span></div>
+        </div>
+      </footer>
     </>
   );
 }
 
-function Card({ p }: { p: Prod }) {
+function Card({ p, i }: { p: Prod; i: number }) {
   const { add } = useCart();
+  const [ok, setOk] = useState(false);
   const price = p.sale_price ?? p.price;
+  const onAdd = () => { add(p); setOk(true); setTimeout(() => setOk(false), 1200); };
   return (
-    <div className="card">
+    <div className="card" style={css({ "--i": i })}>
       <Link to={`/p/${p.slug}`}>{p.images[0] ? <img loading="lazy" src={p.images[0]} alt={p.name_ar} /> : <div className="ph">💊</div>}</Link>
       <div className="in">
         <div>
@@ -39,12 +86,15 @@ function Card({ p }: { p: Prod }) {
           {p.requires_pharmacist && <span className="tag">بمراجعة الصيدلانية</span>}
         </div>
         <div className="price">{money(price)}{p.sale_price != null && <span className="old">{money(p.price)}</span>}</div>
-        <button className="btn" disabled={!p.in_stock} onClick={() => add(p)}>{p.in_stock ? "أضف للسلة" : "نفد"}</button>
+        <button className={"btn" + (ok ? " ok" : "")} disabled={!p.in_stock} onClick={onAdd}>{!p.in_stock ? "نفد" : ok ? "تمت الإضافة ✓" : "أضف للسلة"}</button>
       </div>
     </div>
   );
 }
-const Grid = ({ items }: { items: Prod[] }) => <div className="grid">{items.map((p) => <Card key={p.id} p={p} />)}</div>;
+function Grid({ items }: { items: Prod[] }) {
+  const [ref, on] = useReveal<HTMLDivElement>();
+  return <div ref={ref} className={"grid rv" + (on ? " in" : "")}>{items.map((p, i) => <Card key={p.id} p={p} i={i % 8} />)}</div>;
+}
 
 export function Home() {
   const cats = useFetch<Cat[]>("/api/categories");
@@ -53,15 +103,24 @@ export function Home() {
   return (
     <>
       <section className="hero">
-        <h1>صحتك وجمالك بعناية صيدلانية</h1>
+        <span className="fl f1" aria-hidden style={css({ "--d": "0s" })}><Icon k="medicines" /></span>
+        <span className="fl f2" aria-hidden style={css({ "--d": "1.2s" })}><Icon k="care" /></span>
+        <span className="fl f3" aria-hidden style={css({ "--d": "2.4s" })}><Icon k="baby-care" /></span>
+        <span className="fl f4" aria-hidden style={css({ "--d": "3.6s" })}><Icon k="beauty" /></span>
+        <h1>{"صحتك وجمالك بعناية صيدلانية".split(" ").map((w, i) => <span key={i} className="w" style={css({ "--i": i })}>{w}</span>)}</h1>
         <p>علاجات، منتجات عناية وتجميل، ومستلزمات الأطفال والأدوات الصحية، توصيل لجميع مناطق قطاع غزة.</p>
       </section>
+      <div className="trust">
+        <div><b>توصيل لكل المناطق</b><span>نحدد السعر معك حسب اليوم</span></div>
+        <div><b>الدفع عند الاستلام</b><span>ادفعي بعد ما يوصلك الطلب</span></div>
+        <div><b>مراجعة الصيدلانية</b><span>للمنتجات اللي تحتاج استشارة</span></div>
+      </div>
       {cats.e && <p className="err">{cats.e}</p>}
       <div className="cats">
-        {cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`} className="cat"><span>{ICON[c.slug] ?? "🌿"}</span>{c.name_ar}</Link>)}
+        {cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`} className="cat"><span><Icon k={c.slug} /></span>{c.name_ar}</Link>)}
       </div>
       {!!feat.d?.length && <><h2>منتجات مميزة</h2><Grid items={feat.d} /></>}
-      {!!sale.d?.length && <><h2>العروض</h2><Grid items={sale.d} /></>}
+      {!!sale.d?.length && <section className="band"><h2>العروض</h2><Grid items={sale.d} /></section>}
     </>
   );
 }
