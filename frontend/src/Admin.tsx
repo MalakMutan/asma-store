@@ -84,7 +84,36 @@ export function Products() {
   const patch = (id: number, b: object) => api(`/api/admin/products/${id}`, { method: "PATCH", body: b, token: true }).then(r.reload).catch(fail);
   const blank = { category_id: "", name_ar: "", name_en: "", price: "", sale_price: "", stock_qty: "0", description_ar: "", usage_ar: "", images: "", requires_pharmacist: false };
   const [f, setF] = useState<any>(blank);
+  const [up, setUp] = useState(false);
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
+  const previews: string[] = String(f.images).split(",").map((x: string) => x.trim()).filter(Boolean);
+
+  async function upload(files: FileList | null) {
+    if (!files || !files.length) return;
+    setUp(true);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const s = await api<any>("/api/admin/upload-signature", { token: true });
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("api_key", s.api_key);
+        fd.append("timestamp", String(s.timestamp));
+        fd.append("folder", s.folder);
+        fd.append("signature", s.signature);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${s.cloud_name}/image/upload`, { method: "POST", body: fd });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j?.error?.message || "فشل رفع الصورة");
+        urls.push(j.secure_url);
+      }
+      setF((x: any) => ({ ...x, images: [x.images, ...urls].filter(Boolean).join(", ") }));
+    } catch (x: any) {
+      fail(x);
+    } finally {
+      setUp(false);
+    }
+  }
+
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     api("/api/admin/products", { method: "POST", token: true, body: {
@@ -115,9 +144,14 @@ export function Products() {
         <div className="row"><input required type="number" step="0.01" placeholder="السعر ₪" value={f.price} onChange={set("price")} style={{ flex: 1 }} /><input type="number" step="0.01" placeholder="سعر العرض" value={f.sale_price} onChange={set("sale_price")} style={{ flex: 1 }} /><input type="number" placeholder="الكمية" value={f.stock_qty} onChange={set("stock_qty")} style={{ flex: 1 }} /></div>
         <textarea placeholder="الوصف" value={f.description_ar} onChange={set("description_ar")} />
         <textarea placeholder="طريقة الاستخدام" value={f.usage_ar} onChange={set("usage_ar")} />
-        <input placeholder="روابط الصور (افصل بينها بفاصلة)" value={f.images} onChange={set("images")} />
+        <label className="btn alt" style={{ textAlign: "center", opacity: up ? 0.6 : 1 }}>
+          {up ? "جارٍ رفع الصور…" : "📷 رفع صور من الجهاز (يمكن اختيار أكثر من صورة)"}
+          <input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
+        </label>
+        {!!previews.length && <div className="row">{previews.map((u, k) => <img key={k} src={u} alt="" width={64} height={64} style={{ borderRadius: 8, objectFit: "cover" }} />)}</div>}
+        <input placeholder="روابط الصور (تظهر هنا تلقائيًا بعد الرفع، أو الصقي روابط)" value={f.images} onChange={set("images")} />
         <label><input type="checkbox" checked={f.requires_pharmacist} onChange={set("requires_pharmacist")} /> يتطلب مراجعة الصيدلانية قبل التأكيد</label>
-        <button className="btn">إضافة المنتج</button>
+        <button className="btn" disabled={up}>إضافة المنتج</button>
       </form>
     </>
   );
