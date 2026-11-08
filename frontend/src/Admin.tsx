@@ -4,6 +4,20 @@ import { api, AProd, BASE, Cat, money, Order, useFetch } from "./api";
 
 const STATUS: Record<string, string> = { new: "جديد", pending_pharmacist: "بانتظار الصيدلانية", confirmed: "مؤكد", preparing: "قيد التجهيز", out_for_delivery: "في الطريق", delivered: "تم التسليم", cancelled: "ملغي" };
 const fail = (e: Error) => alert(e.message);
+const CLOUD = "ddyjag5s";
+const PRESET = "asma_store"; // اسم الـ Upload preset (Unsigned) في Cloudinary
+
+async function shrink(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+    if (k === 1 && file.size < 800000) return file;
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+    return await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("x"))), "image/jpeg", 0.85));
+  } catch { return file; }
+}
 
 export function Login() {
   const nav = useNavigate();
@@ -85,32 +99,36 @@ export function Products() {
   const blank = { category_id: "", name_ar: "", name_en: "", price: "", sale_price: "", stock_qty: "0", description_ar: "", usage_ar: "", images: "", requires_pharmacist: false };
   const [f, setF] = useState<any>(blank);
   const [up, setUp] = useState(false);
+  const [prog, setProg] = useState("");
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const previews: string[] = String(f.images).split(",").map((x: string) => x.trim()).filter(Boolean);
 
   async function upload(files: FileList | null) {
     if (!files || !files.length) return;
-    setUp(true);
+    const list = Array.from(files);
+    setUp(true); setProg(`0/${list.length}`);
     try {
-      const urls: string[] = [];
-      for (const file of Array.from(files)) {
-        const s = await api<any>("/api/admin/upload-signature", { token: true });
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("api_key", s.api_key);
-        fd.append("timestamp", String(s.timestamp));
-        fd.append("folder", s.folder);
-        fd.append("signature", s.signature);
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${s.cloud_name}/image/upload`, { method: "POST", body: fd });
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(j?.error?.message || "فشل رفع الصورة");
-        urls.push(j.secure_url);
-      }
+      const urls: string[] = new Array(list.length);
+      let next = 0, done = 0;
+      const worker = async () => {
+        while (next < list.length) {
+          const i = next++;
+          const fd = new FormData();
+          fd.append("file", await shrink(list[i]));
+          fd.append("upload_preset", PRESET);
+          const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/image/upload`, { method: "POST", body: fd });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(j?.error?.message || "فشل رفع الصورة");
+          urls[i] = j.secure_url;
+          setProg(`${++done}/${list.length}`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
       setF((x: any) => ({ ...x, images: [x.images, ...urls].filter(Boolean).join(", ") }));
     } catch (x: any) {
       fail(x);
     } finally {
-      setUp(false);
+      setUp(false); setProg("");
     }
   }
 
@@ -145,7 +163,7 @@ export function Products() {
         <textarea placeholder="الوصف" value={f.description_ar} onChange={set("description_ar")} />
         <textarea placeholder="طريقة الاستخدام" value={f.usage_ar} onChange={set("usage_ar")} />
         <label className="btn alt" style={{ textAlign: "center", opacity: up ? 0.6 : 1 }}>
-          {up ? "جارٍ رفع الصور…" : "📷 رفع صور من الجهاز (يمكن اختيار أكثر من صورة)"}
+          {up ? `جارٍ رفع الصور ${prog}` : "📷 رفع صور من الجهاز (يمكن اختيار أكثر من صورة)"}
           <input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
         </label>
         {!!previews.length && <div className="row">{previews.map((u, k) => <img key={k} src={u} alt="" width={64} height={64} style={{ borderRadius: 8, objectFit: "cover" }} />)}</div>}
