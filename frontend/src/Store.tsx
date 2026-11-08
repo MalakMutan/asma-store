@@ -9,10 +9,14 @@ const PATHS: Record<string, string> = {
   beauty: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
   "baby-care": '<path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z"/>',
   "health-tools": '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  home: '<path d="M4 11l8-7 8 7v9H4z"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>',
+  cart: '<path d="M5 6h15l-2 9H8z"/><circle cx="9" cy="19" r="1"/><circle cx="17" cy="19" r="1"/>',
 };
 function Icon({ k }: { k: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden dangerouslySetInnerHTML={{ __html: PATHS[k] ?? PATHS.care }} />;
 }
+const MADE_BY = ""; // اكتبي اسمك هنا ليظهر بتذييل الموقع، مثل: "ملك"
 const css = (v: Record<string, string | number>) => v as unknown as CSSProperties;
 
 function useReveal<T extends HTMLElement>() {
@@ -34,6 +38,8 @@ export function Layout() {
   const [q, setQ] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const cats = useFetch<Cat[]>("/api/categories");
+  const loc = useLocation();
+  const sref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const f = () => setScrolled(window.scrollY > 20);
     f();
@@ -51,22 +57,28 @@ export function Layout() {
         <div className="wrap bar">
           <Link to="/"><img src="/logo.jpg" alt="الصيدلانية أسماء" /></Link>
           <form onSubmit={(e) => { e.preventDefault(); nav(`/search?q=${encodeURIComponent(q)}`); }}>
-            <input placeholder="ابحث عن منتج…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="بحث" />
+            <input ref={sref} placeholder="ابحث عن منتج…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="بحث" />
           </form>
-          <Link to="/cart" className="btn">🛒 <span key={count} className={count ? "bump" : ""}>{count}</span></Link>
+          <Link to="/cart" className="btn cartbtn">🛒 <span key={count} className={count ? "bump" : ""}>{count}</span></Link>
         </div>
         <nav className="wrap navc" aria-label="الأقسام">
           {cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`}>{c.name_ar}</Link>)}
         </nav>
       </header>
-      <main className="wrap"><Outlet /></main>
+      <main key={loc.pathname} className="wrap page"><Outlet /></main>
       <footer>
         <div className="wrap fgrid">
           <div><b className="fb">الصيدلانية أسماء</b><p>Ph. Asma Store — رعاية صيدلانية موثوقة وتوصيل لجميع مناطق قطاع غزة.</p></div>
           <div><b>الأقسام</b>{cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`}>{c.name_ar}</Link>)}</div>
           <div><b>معلومات الطلب</b><span>الدفع عند الاستلام</span><span>سعر التوصيل يُحدد حسب ظروف اليوم</span></div>
         </div>
+      {MADE_BY && <div className="wrap made">صُمّم وبُني بكل عناية بواسطة {MADE_BY}</div>}
       </footer>
+      <nav className="tabbar" aria-label="تنقل سريع">
+        <Link to="/"><Icon k="home" />الرئيسية</Link>
+        <button onClick={() => { sref.current?.focus(); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Icon k="search" />بحث</button>
+        <Link to="/cart"><Icon k="cart" />السلة{count > 0 && <span className="n">{count}</span>}</Link>
+      </nav>
     </>
   );
 }
@@ -119,6 +131,7 @@ export function Home() {
       <div className="cats">
         {cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`} className="cat"><span><Icon k={c.slug} /></span>{c.name_ar}</Link>)}
       </div>
+      {!feat.d && !feat.e && <div className="grid">{[0, 1, 2, 3].map((k) => <div key={k} className="sk" />)}</div>}
       {!!feat.d?.length && <><h2>منتجات مميزة</h2><Grid items={feat.d} /></>}
       {!!sale.d?.length && <section className="band"><h2>العروض</h2><Grid items={sale.d} /></section>}
     </>
