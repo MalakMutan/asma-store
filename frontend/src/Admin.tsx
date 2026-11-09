@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { api, AProd, BASE, Cat, money, Order, useFetch } from "./api";
 
-const STATUS: Record<string, string> = { new: "جديد", pending_pharmacist: "بانتظار الصيدلانية", confirmed: "مؤكد", preparing: "قيد التجهيز", out_for_delivery: "في الطريق", delivered: "تم التسليم", cancelled: "ملغي" };
+const STATUS: Record<string, string> = { new: "جديد (بانتظار الدفع)", pending_pharmacist: "بانتظار الصيدلانية", confirmed: "مؤكد (تم الدفع)", preparing: "قيد التجهيز", out_for_delivery: "في الطريق", delivered: "تم التسليم", cancelled: "ملغي" };
 const fail = (e: Error) => alert(e.message);
 const CLOUD = "ddyjag5s";
 const PRESET = "asma_store"; // اسم الـ Upload preset (Unsigned) في Cloudinary
@@ -65,6 +65,7 @@ function OrderRow({ o, reload }: { o: Order; reload: () => void }) {
       <div className="row">
         <input type="number" min={0} placeholder="سعر التوصيل ₪" value={fee} onChange={(e) => setFee(e.target.value)} style={{ width: 150 }} />
         <button className="btn alt" onClick={() => fee !== "" && patch({ delivery_fee: Number(fee) })}>حفظ التوصيل</button>
+        {(o.status === "new" || o.status === "pending_pharmacist") && <button className="btn" onClick={() => confirm("تأكيد استلام الدفع وتأكيد الطلب؟") && patch({ status: "confirmed" })}>✓ تأكيد الدفع</button>}
         <select value={o.status} onChange={(e) => patch({ status: e.target.value })} style={{ width: 170 }}>
           {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
