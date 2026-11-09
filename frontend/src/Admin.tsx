@@ -92,16 +92,22 @@ export function Orders() {
   );
 }
 
-export function Products() {
-  const r = useFetch<AProd[]>("/api/admin/products", true);
-  const cats = useFetch<Cat[]>("/api/admin/categories", true);
-  const patch = (id: number, b: object) => api(`/api/admin/products/${id}`, { method: "PATCH", body: b, token: true }).then(r.reload).catch(fail);
-  const blank = { category_id: "", name_ar: "", name_en: "", price: "", sale_price: "", stock_qty: "0", description_ar: "", usage_ar: "", images: "", requires_pharmacist: false };
-  const [f, setF] = useState<any>(blank);
+type PF = { category_id: string; name_ar: string; name_en: string; price: string; sale_price: string; stock_qty: string; description_ar: string; usage_ar: string; images: string[]; requires_pharmacist: boolean; is_featured: boolean };
+const BLANK: PF = { category_id: "", name_ar: "", name_en: "", price: "", sale_price: "", stock_qty: "0", description_ar: "", usage_ar: "", images: [], requires_pharmacist: false, is_featured: false };
+const toInit = (p: AProd): PF => ({
+  category_id: String(p.category_id), name_ar: p.name_ar, name_en: (p as any).name_en ?? "", price: String(p.price),
+  sale_price: p.sale_price == null ? "" : String(p.sale_price), stock_qty: String(p.stock_qty),
+  description_ar: p.description_ar ?? "", usage_ar: p.usage_ar ?? "", images: p.images ?? [],
+  requires_pharmacist: p.requires_pharmacist, is_featured: p.is_featured,
+});
+
+function ProductForm({ init, cats, label, onSave, onCancel }: { init: PF; cats: Cat[] | null; label: string; onSave: (b: any) => Promise<unknown>; onCancel?: () => void }) {
+  const [f, setF] = useState<PF>(init);
   const [up, setUp] = useState(false);
   const [prog, setProg] = useState("");
-  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
-  const previews: string[] = String(f.images).split(",").map((x: string) => x.trim()).filter(Boolean);
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof PF) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
 
   async function upload(files: FileList | null) {
     if (!files || !files.length) return;
@@ -124,23 +130,69 @@ export function Products() {
         }
       };
       await Promise.all([worker(), worker(), worker()]);
-      setF((x: any) => ({ ...x, images: [x.images, ...urls].filter(Boolean).join(", ") }));
-    } catch (x: any) {
-      fail(x);
-    } finally {
-      setUp(false); setProg("");
-    }
+      setF((x) => ({ ...x, images: [...x.images, ...urls] }));
+    } catch (x: any) { fail(x); } finally { setUp(false); setProg(""); }
   }
 
-  const add = (e: React.FormEvent) => {
+  const first = (k: number) => setF((x) => ({ ...x, images: [x.images[k], ...x.images.filter((_, i) => i !== k)] }));
+  const drop = (k: number) => setF((x) => ({ ...x, images: x.images.filter((_, i) => i !== k) }));
+  const addLink = () => { const u = link.trim(); if (u) { setF((x) => ({ ...x, images: [...x.images, u] })); setLink(""); } };
+
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    api("/api/admin/products", { method: "POST", token: true, body: {
-      ...f, category_id: Number(f.category_id), price: Number(f.price), stock_qty: Number(f.stock_qty),
-      sale_price: f.sale_price === "" ? null : Number(f.sale_price), images: f.images.split(",").map((x: string) => x.trim()).filter(Boolean),
-    } }).then(() => { setF(blank); r.reload(); }).catch(fail);
+    setBusy(true);
+    onSave({
+      category_id: Number(f.category_id), name_ar: f.name_ar, name_en: f.name_en, price: Number(f.price),
+      sale_price: f.sale_price === "" ? null : Number(f.sale_price), stock_qty: Number(f.stock_qty),
+      description_ar: f.description_ar, usage_ar: f.usage_ar, images: f.images,
+      requires_pharmacist: f.requires_pharmacist, is_featured: f.is_featured,
+    }).finally(() => setBusy(false));
   };
+
+  return (
+    <form className="form" onSubmit={submit}>
+      <select required value={f.category_id} onChange={set("category_id")}><option value="">القسم</option>{cats?.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}</select>
+      <input required placeholder="الاسم بالعربي" value={f.name_ar} onChange={set("name_ar")} />
+      <input placeholder="الاسم بالإنجليزي (اختياري)" value={f.name_en} onChange={set("name_en")} />
+      <div className="row"><input required type="number" step="0.01" placeholder="السعر ₪" value={f.price} onChange={set("price")} style={{ flex: 1 }} /><input type="number" step="0.01" placeholder="سعر العرض" value={f.sale_price} onChange={set("sale_price")} style={{ flex: 1 }} /><input type="number" placeholder="الكمية" value={f.stock_qty} onChange={set("stock_qty")} style={{ flex: 1 }} /></div>
+      <textarea placeholder="الوصف" value={f.description_ar} onChange={set("description_ar")} />
+      <textarea placeholder="طريقة الاستخدام" value={f.usage_ar} onChange={set("usage_ar")} />
+      <label className="btn alt" style={{ textAlign: "center", opacity: up ? 0.6 : 1 }}>
+        {up ? `جارٍ رفع الصور ${prog}` : "📷 رفع صور من الجهاز (يمكن اختيار أكثر من صورة)"}
+        <input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
+      </label>
+      {!!f.images.length && <div className="row">{f.images.map((u, k) => (
+        <div key={u + k} style={{ position: "relative" }}>
+          <img src={u} alt="" width={72} height={72} style={{ borderRadius: 8, objectFit: "cover", border: k === 0 ? "2px solid var(--gold)" : "1px solid #ddd" }} />
+          <button type="button" className="btn alt" aria-label="حذف الصورة" onClick={() => drop(k)} style={{ position: "absolute", top: -6, insetInlineEnd: -6, padding: "0 7px", borderRadius: 999 }}>✕</button>
+          {k > 0 && <button type="button" className="btn alt" onClick={() => first(k)} style={{ display: "block", margin: "4px auto 0", padding: "0 8px", fontSize: 12 }}>رئيسية</button>}
+        </div>
+      ))}</div>}
+      {!!f.images.length && <small>الصورة بالإطار الذهبي هي الصورة الرئيسية للمنتج.</small>}
+      <div className="row"><input placeholder="أو الصقي رابط صورة" value={link} onChange={(e) => setLink(e.target.value)} style={{ flex: 1 }} /><button type="button" className="btn alt" onClick={addLink}>إضافة الرابط</button></div>
+      <label><input type="checkbox" checked={f.requires_pharmacist} onChange={set("requires_pharmacist")} /> يتطلب مراجعة الصيدلانية قبل التأكيد</label>
+      <label><input type="checkbox" checked={f.is_featured} onChange={set("is_featured")} /> منتج مميز (يظهر بالصفحة الرئيسية)</label>
+      <div className="row">
+        <button className="btn" disabled={up || busy}>{busy ? "جارٍ الحفظ…" : label}</button>
+        {onCancel && <button type="button" className="btn alt" onClick={onCancel}>إلغاء</button>}
+      </div>
+    </form>
+  );
+}
+
+export function Products() {
+  const r = useFetch<AProd[]>("/api/admin/products", true);
+  const cats = useFetch<Cat[]>("/api/admin/categories", true);
+  const patch = (id: number, b: object) => api(`/api/admin/products/${id}`, { method: "PATCH", body: b, token: true }).then(r.reload).catch(fail);
+  const [editing, setEditing] = useState<AProd | null>(null);
+  const [fk, setFk] = useState(0);
   return (
     <>
+      {editing && <>
+        <h2>تعديل: {editing.name_ar}</h2>
+        <ProductForm key={editing.id} init={toInit(editing)} cats={cats.d} label="حفظ التعديلات" onCancel={() => setEditing(null)}
+          onSave={(b) => api(`/api/admin/products/${editing.id}`, { method: "PATCH", body: b, token: true }).then(() => { setEditing(null); r.reload(); }).catch(fail)} />
+      </>}
       <h2>المنتجات</h2>
       <div className="scroll"><table>
         <thead><tr><th>المنتج</th><th>السعر ₪</th><th>الكمية</th><th>ظاهر</th><th></th></tr></thead>
@@ -150,27 +202,16 @@ export function Products() {
             <td><input key={p.price} type="number" defaultValue={p.price} style={{ width: 90 }} onBlur={(e) => Number(e.target.value) !== p.price && patch(p.id, { price: Number(e.target.value) })} /></td>
             <td><input key={p.stock_qty} type="number" defaultValue={p.stock_qty} style={{ width: 80 }} onBlur={(e) => Number(e.target.value) !== p.stock_qty && patch(p.id, { stock_qty: Number(e.target.value) })} /></td>
             <td><input type="checkbox" checked={p.is_visible} onChange={(e) => patch(p.id, { is_visible: e.target.checked })} /></td>
-            <td><button className="btn alt" onClick={() => confirm("حذف المنتج؟") && api(`/api/admin/products/${p.id}`, { method: "DELETE", token: true }).then(r.reload).catch(fail)}>حذف</button></td>
+            <td className="row">
+              <button className="btn" onClick={() => { setEditing(p); window.scrollTo({ top: 0, behavior: "smooth" }); }}>تعديل</button>
+              <button className="btn alt" onClick={() => confirm("حذف المنتج؟") && api(`/api/admin/products/${p.id}`, { method: "DELETE", token: true }).then(r.reload).catch(fail)}>حذف</button>
+            </td>
           </tr>
         ))}</tbody>
       </table></div>
       <h2>إضافة منتج</h2>
-      <form className="form" onSubmit={add}>
-        <select required value={f.category_id} onChange={set("category_id")}><option value="">القسم</option>{cats.d?.map((c) => <option key={c.id} value={c.id}>{c.name_ar}</option>)}</select>
-        <input required placeholder="الاسم بالعربي" value={f.name_ar} onChange={set("name_ar")} />
-        <input placeholder="الاسم بالإنجليزي (اختياري)" value={f.name_en} onChange={set("name_en")} />
-        <div className="row"><input required type="number" step="0.01" placeholder="السعر ₪" value={f.price} onChange={set("price")} style={{ flex: 1 }} /><input type="number" step="0.01" placeholder="سعر العرض" value={f.sale_price} onChange={set("sale_price")} style={{ flex: 1 }} /><input type="number" placeholder="الكمية" value={f.stock_qty} onChange={set("stock_qty")} style={{ flex: 1 }} /></div>
-        <textarea placeholder="الوصف" value={f.description_ar} onChange={set("description_ar")} />
-        <textarea placeholder="طريقة الاستخدام" value={f.usage_ar} onChange={set("usage_ar")} />
-        <label className="btn alt" style={{ textAlign: "center", opacity: up ? 0.6 : 1 }}>
-          {up ? `جارٍ رفع الصور ${prog}` : "📷 رفع صور من الجهاز (يمكن اختيار أكثر من صورة)"}
-          <input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
-        </label>
-        {!!previews.length && <div className="row">{previews.map((u, k) => <img key={k} src={u} alt="" width={64} height={64} style={{ borderRadius: 8, objectFit: "cover" }} />)}</div>}
-        <input placeholder="روابط الصور (تظهر هنا تلقائيًا بعد الرفع، أو الصقي روابط)" value={f.images} onChange={set("images")} />
-        <label><input type="checkbox" checked={f.requires_pharmacist} onChange={set("requires_pharmacist")} /> يتطلب مراجعة الصيدلانية قبل التأكيد</label>
-        <button className="btn" disabled={up}>إضافة المنتج</button>
-      </form>
+      <ProductForm key={fk} init={BLANK} cats={cats.d} label="إضافة المنتج"
+        onSave={(b) => api("/api/admin/products", { method: "POST", token: true, body: b }).then(() => { setFk(fk + 1); r.reload(); }).catch(fail)} />
     </>
   );
 }
