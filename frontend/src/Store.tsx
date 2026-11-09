@@ -16,6 +16,7 @@ const PATHS: Record<string, string> = {
 function Icon({ k }: { k: string }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden dangerouslySetInnerHTML={{ __html: PATHS[k] ?? PATHS.care }} />;
 }
+const PAY_INFO = ""; // اكتبي هنا طرق الدفع وأرقام الحسابات، كل طريقة بسطر
 const MADE_BY = ""; // اكتبي اسمك هنا ليظهر بتذييل الموقع، مثل: "ملك"
 const css = (v: Record<string, string | number>) => v as unknown as CSSProperties;
 
@@ -50,7 +51,7 @@ export function Layout() {
     <>
       <div className="ann" aria-live="off">
         <span>التوصيل لجميع مناطق قطاع غزة</span>
-        <span>الدفع عند الاستلام</span>
+        <span>الدفع مسبقًا، ويُؤكَّد الطلب بعد استلام الدفع</span>
         <span>مراجعة صيدلانية للمنتجات العلاجية</span>
       </div>
       <header className={scrolled ? "s" : ""}>
@@ -70,7 +71,7 @@ export function Layout() {
         <div className="wrap fgrid">
           <div><b className="fb">الصيدلانية أسماء</b><p>Ph. Asma Store — رعاية صيدلانية موثوقة وتوصيل لجميع مناطق قطاع غزة.</p></div>
           <div><b>الأقسام</b>{cats.d?.map((c) => <Link key={c.id} to={`/c/${c.slug}`}>{c.name_ar}</Link>)}</div>
-          <div><b>معلومات الطلب</b><span>الدفع عند الاستلام</span><span>سعر التوصيل يُحدد حسب ظروف اليوم</span></div>
+          <div><b>معلومات الطلب</b><span>الدفع مسبقًا قبل التوصيل</span><span>سعر التوصيل يُحدد حسب ظروف اليوم</span></div>
         </div>
       {MADE_BY && <div className="wrap made">صُمّم وبُني بكل عناية بواسطة {MADE_BY}</div>}
       </footer>
@@ -124,7 +125,7 @@ export function Home() {
       </section>
       <div className="trust">
         <div><b>توصيل لكل المناطق</b><span>نحدد السعر معك حسب اليوم</span></div>
-        <div><b>الدفع عند الاستلام</b><span>ادفعي بعد ما يوصلك الطلب</span></div>
+        <div><b>دفع مسبق آمن</b><span>نؤكد الطلب ونوصله بعد استلام الدفع</span></div>
         <div><b>مراجعة الصيدلانية</b><span>للمنتجات اللي تحتاج استشارة</span></div>
       </div>
       {cats.e && <p className="err">{cats.e}</p>}
@@ -200,7 +201,7 @@ export function Cart() {
         ))}</tbody>
       </table></div>
       <p><b>مجموع المنتجات: {money(total)}</b></p>
-      <div className="note">سعر التوصيل نحدده معك حسب ظروف اليوم قبل تأكيد الطلب.</div>
+      <div className="note">سعر التوصيل نحدده معك حسب ظروف اليوم. الدفع مسبقًا، ويتم تأكيد الطلب بعد استلام الدفع.</div>
       <Link to="/checkout" className="btn">إتمام الطلب</Link>
     </>
   );
@@ -238,6 +239,7 @@ export function Checkout() {
         <textarea required placeholder="العنوان بالتفصيل" value={f.address} onChange={set("address")} />
         <textarea placeholder="ملاحظات (اختياري)" value={f.notes} onChange={set("notes")} />
         <b>مجموع المنتجات: {money(total)} + التوصيل (يُحدد لاحقًا)</b>
+        <div className="note">الدفع مسبقًا: بعد إرسال الطلب تحدد لك الصيدلانية سعر التوصيل وتزوّدك بتفاصيل الدفع، ويتم تأكيد الطلب وتجهيزه بعد استلام الدفع.</div>
         {err && <p className="err">{err}</p>}
         <button className="btn" disabled={busy}>{busy ? "جارٍ الإرسال…" : "أرسل الطلب"}</button>
       </form>
@@ -252,7 +254,13 @@ export function Done() {
     <div style={{ textAlign: "center", marginTop: 40 }}>
       <h2 style={{ border: 0 }}>وصلنا طلبك</h2>
       <p style={{ fontSize: 32, fontWeight: 800, color: "var(--g)", margin: 0 }}>{num}</p>
-      <p>احتفظ برقم الطلب. ستتواصل معك الصيدلانية أسماء لتأكيد الطلب وتحديد سعر التوصيل.</p>
+      <p>احتفظ برقم الطلب، فهو مرجعك مع الصيدلانية.</p>
+      <ol style={{ textAlign: "start", maxWidth: 460, margin: "12px auto" }}>
+        <li>ستتواصل معك الصيدلانية أسماء لتحديد سعر التوصيل وإرسال المبلغ الإجمالي.</li>
+        <li>يرجى دفع المبلغ (المنتجات + التوصيل) وإرسال إثبات الدفع.</li>
+        <li>بعد استلام الدفع نؤكد طلبك ونوصله إليك.</li>
+      </ol>
+      {PAY_INFO && <div className="note" style={{ whiteSpace: "pre-line", textAlign: "start", maxWidth: 460, margin: "12px auto" }}><b>طرق الدفع</b>{"\n"}{PAY_INFO}</div>}
       {review && <div className="note">طلبك يتضمن منتجًا يحتاج مراجعة الصيدلانية قبل التأكيد.</div>}
       <Link to="/" className="btn">العودة للمتجر</Link>
     </div>
